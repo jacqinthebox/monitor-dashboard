@@ -30,7 +30,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
 .refresh-btn:hover{color:var(--green);border-color:var(--green);box-shadow:0 0 8px rgba(0,210,106,.15)}
 
 /* Top row — threats narrow left, map wide center, world news right */
-.row-top{display:grid;grid-template-columns:0.7fr 2fr 1fr;gap:0}
+.row-top{display:grid;grid-template-columns:0.7fr 1.3fr 1fr;gap:0}
 .row-top .panel{max-height:520px}
 @media(max-width:1100px){.row-top{grid-template-columns:1fr 1fr}.row-top .panel:nth-child(3){grid-column:span 2}}
 @media(max-width:700px){.row-top{grid-template-columns:1fr}.row-top .panel:nth-child(3){grid-column:span 1}}
