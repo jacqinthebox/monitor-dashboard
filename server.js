@@ -95,7 +95,8 @@ const GITHUB_REPOS = [
   'fluxcd/flux2',
   'external-secrets/external-secrets',
   'kubernetes/kubernetes',
-  'ollama/ollama'
+  'ollama/ollama',
+  'prometheus/prometheus'
 ];
 
 app.get('/api/github', async (req, res) => {
