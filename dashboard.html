@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MONITOR</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#000;--panel:#060606;--border:#151515;--text:#c0c0c0;--muted:#444;
+  --hi:#e0e0e0;--green:#00d26a;--red:#ff4444;--orange:#ff9f43;--yellow:#feca57;--purple:#a29bfe;
+  --accent:#0a1a2a;--glow:rgba(0,210,106,.06);
+}
+body{font-family:'SF Mono','Fira Code','JetBrains Mono','Cascadia Code',monospace;background:var(--bg);color:var(--text);font-size:11px;line-height:1.35;overflow-x:hidden;min-height:100vh}
+
+/* Scanline overlay */
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px)}
+
+/* Top bar */
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#0a0a0a,var(--panel))}
+.topbar .logo{font-size:12px;font-weight:700;letter-spacing:6px;color:var(--hi);text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.topbar .logo::before{content:'';display:inline-block;width:8px;height:8px;background:var(--green);border-radius:50%;box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+.topbar .logo span{color:var(--muted);font-weight:400;letter-spacing:2px;font-size:10px}
+.topbar .meta{display:flex;gap:14px;align-items:center;font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+.topbar .meta .live{color:var(--green);font-weight:600}
+.topbar .meta .live::before{content:'';display:inline-block;width:5px;height:5px;background:var(--green);border-radius:50%;margin-right:4px;box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.refresh-btn{background:none;border:1px solid var(--border);color:var(--muted);padding:4px 12px;font-family:inherit;font-size:9px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;border-radius:2px;transition:all .2s}
+.refresh-btn:hover{color:var(--green);border-color:var(--green);box-shadow:0 0 8px rgba(0,210,106,.15)}
+
+/* Top row — threats narrow left, map wide center, world news right */
+.row-top{display:grid;grid-template-columns:0.7fr 2fr 1fr;gap:0}
+.row-top .panel{max-height:520px}
+@media(max-width:1100px){.row-top{grid-template-columns:1fr 1fr}.row-top .panel:nth-child(3){grid-column:span 2}}
+@media(max-width:700px){.row-top{grid-template-columns:1fr}.row-top .panel:nth-child(3){grid-column:span 1}}
+
+/* Main grid — 3 equal cols for everything else */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:auto;gap:0}
+.grid .span-2{grid-column:span 2}
+@media(max-width:1100px){.grid{grid-template-columns:repeat(2,1fr)}.grid .span-2{grid-column:span 2}}
+@media(max-width:700px){.grid{grid-template-columns:1fr}.grid .span-2{grid-column:span 1}}
+
+/* Panels */
+.panel{border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:0;background:var(--panel);overflow:hidden;display:flex;flex-direction:column;min-height:0;max-height:380px}
+.panel-head{display:flex;justify-content:space-between;align-items:center;padding:6px 12px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#0d0d0d,#080808);flex-shrink:0;min-height:30px}
+.panel-head h2{font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--hi);display:flex;align-items:center;gap:6px}
+.panel-head h2::before{content:'';display:inline-block;width:3px;height:12px;background:var(--green);border-radius:1px;flex-shrink:0}
+.panel-head .badge{font-size:8px;color:var(--green);letter-spacing:1px;font-weight:600}
+.panel-head .badge.muted{color:var(--muted)}
+.panel-head .tabs{display:flex;gap:2px}
+.panel-head .tab{background:none;border:none;color:var(--muted);padding:3px 8px;font-family:inherit;font-size:8px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;border-radius:2px;transition:all .15s}
+.panel-head .tab:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.panel-head .tab.active{background:var(--hi);color:#000;font-weight:600}
+.panel-body{padding:8px 12px;overflow-y:auto;flex:1;min-height:0}
+
+/* Map panel gets more height */
+.panel.map-panel{max-height:none}
+
+/* Map */
+.panel.map-panel{min-height:0;position:relative}
+.panel.map-panel .panel-body{background:#050a12;padding:0;overflow:hidden}
+#worldMap{width:100%;height:auto;display:block;aspect-ratio:2/1}
+#worldMap path.land{fill:#0f1b1f;stroke:#1a3a3a;stroke-width:.4;stroke-linejoin:round}
+#worldMap path.land:hover{fill:#15282e}
+#worldMap circle.threat-dot{cursor:pointer}
+#worldMap text.threat-label{pointer-events:none}
+.map-vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 50%,rgba(5,10,18,.7) 100%);z-index:1}
+.map-tooltip{position:absolute;background:rgba(5,10,20,.95);border:1px solid rgba(0,210,106,.25);border-radius:3px;padding:8px 10px;font-size:10px;color:var(--text);pointer-events:none;z-index:100;max-width:220px;line-height:1.4;display:none;font-family:-apple-system,sans-serif;backdrop-filter:blur(8px);box-shadow:0 0 12px rgba(0,0,0,.5)}
+.map-tooltip .tt-title{font-weight:700;margin-bottom:2px}
+.map-tooltip .tt-type{font-size:8px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
+.map-tooltip .tt-type.war{color:var(--red)}.map-tooltip .tt-type.tension{color:var(--orange)}.map-tooltip .tt-type.crisis{color:var(--yellow)}.map-tooltip .tt-type.cyber{color:var(--purple)}
+.map-legend{display:flex;gap:12px;padding:5px 12px;font-size:8px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;border-top:1px solid var(--border);flex-wrap:wrap;background:#050505}
+.map-legend span{display:inline-flex;align-items:center;gap:4px}
+.map-legend .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+
+/* Crypto/ETF compact */
+.price-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)}
+.price-row:last-child{border-bottom:none}
+.price-row .sym{font-weight:700;color:var(--hi);font-size:11px}
+.price-row .name{color:var(--muted);font-size:9px;margin-left:4px}
+.price-row .val{font-weight:700;color:var(--hi);font-size:12px}
+.price-row .eur{color:var(--muted);font-size:9px;margin-left:6px}
+.chg{font-size:9px;font-weight:600;padding:1px 5px;border-radius:2px;margin-left:3px}
+.chg.up{color:var(--green);background:rgba(0,210,106,.1)}
+.chg.down{color:var(--red);background:rgba(255,68,68,.1)}
+.sparkline-wrap{height:120px;margin-top:6px;position:relative}
+.sparkline-wrap canvas{width:100%;height:100%}
+.chart-label{position:absolute;top:2px;right:4px;font-size:7px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase}
+.chart-tf{display:flex;gap:2px;margin-top:6px;margin-bottom:4px}
+.chart-tf button{background:none;border:1px solid var(--border);color:var(--muted);padding:2px 6px;font-family:inherit;font-size:8px;letter-spacing:.5px;cursor:pointer;border-radius:2px;transition:all .15s}
+.chart-tf button:hover{color:var(--text);border-color:#333}
+.chart-tf button.active{background:var(--hi);color:#000;font-weight:600;border-color:var(--hi)}
+.stat-row{display:flex;gap:12px;font-size:9px;color:var(--muted);padding-top:4px}
+.stat-row span{color:var(--text);font-weight:600}
+
+/* News items */
+.news-item{display:block;padding:6px 0;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;transition:all .15s}
+.news-item:last-child{border-bottom:none}
+.news-item:hover{background:rgba(255,255,255,.02);padding-left:4px}
+.news-item h3{font-size:10.5px;font-weight:500;line-height:1.4;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin-bottom:3px}
+.news-item .nm{display:flex;justify-content:space-between;align-items:center;font-size:8px;color:var(--muted);letter-spacing:.3px}
+.news-item .src{background:rgba(255,255,255,.05);padding:1px 6px;border-radius:2px;font-size:7.5px;letter-spacing:.5px;text-transform:uppercase}
+
+/* Loading / error */
+.loading{display:flex;align-items:center;justify-content:center;height:60px;color:var(--muted);font-size:9px;letter-spacing:1px;text-transform:uppercase}
+.loading::after{content:'';width:10px;height:10px;border:1.5px solid var(--border);border-top-color:var(--green);border-radius:50%;margin-left:8px;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.error-msg{color:var(--red);font-size:9px;padding:6px 0}
+
+/* ETF compact table */
+.etf-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border);font-size:10px}
+.etf-row:last-child{border-bottom:none}
+.etf-row .tk{color:var(--muted);font-size:9px}
+.etf-row .tp{color:var(--muted);font-size:9px}
+.note{font-size:8px;color:var(--muted);letter-spacing:.5px;padding-top:4px;text-transform:uppercase}
+
+/* Weather */
+.weather-main{display:flex;align-items:center;gap:12px;padding:6px 0;border-bottom:1px solid var(--border)}
+.weather-icon{font-size:32px;line-height:1}
+.weather-temp{font-size:24px;font-weight:700;color:var(--hi)}
+.weather-desc{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.weather-details{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;padding-top:6px;font-size:9px}
+.weather-details .wd-label{color:var(--muted)}
+.weather-details .wd-val{color:var(--text);font-weight:600;text-align:right}
+.weather-loc{font-size:8px;color:var(--muted);letter-spacing:.5px;padding-top:6px;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between}
+.weather-loc .change-btn{background:none;border:1px solid var(--border);color:var(--muted);padding:2px 6px;font-family:inherit;font-size:7px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;border-radius:2px}
+.weather-loc .change-btn:hover{color:var(--text);border-color:#333}
+.weather-forecast{display:flex;gap:0;padding-top:6px;margin-top:6px;border-top:1px solid var(--border)}
+.weather-forecast .fc-day{flex:1;text-align:center;padding:4px 2px;font-size:8px;border-right:1px solid var(--border)}
+.weather-forecast .fc-day:last-child{border-right:none}
+.weather-forecast .fc-name{color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
+.weather-forecast .fc-icon{font-size:16px;line-height:1.2}
+.weather-forecast .fc-temps{color:var(--text);font-weight:600;font-size:9px}
+.weather-forecast .fc-lo{color:var(--muted);font-weight:400}
+.city-search{display:flex;gap:4px;padding:4px 0}
+.city-search input{flex:1;background:#111;border:1px solid var(--border);color:var(--text);padding:4px 6px;font-family:inherit;font-size:10px;border-radius:2px;outline:none}
+.city-search input:focus{border-color:var(--green)}
+.city-search button{background:var(--green);border:none;color:#000;padding:4px 8px;font-family:inherit;font-size:8px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;border-radius:2px}
+.city-results{list-style:none;padding:0;margin:2px 0}
+.city-results li{padding:4px 6px;cursor:pointer;font-size:9px;border-bottom:1px solid var(--border);color:var(--text)}
+.city-results li:hover{background:rgba(255,255,255,.04)}
+.city-results li span{color:var(--muted);font-size:8px;margin-left:4px}
+
+/* Threat list */
+.threat-item{display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);align-items:flex-start}
+.threat-item:last-child{border-bottom:none}
+.threat-item .t-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-top:3px}
+.threat-item .t-name{font-size:10px;font-weight:600;color:var(--hi)}
+.threat-item .t-type{font-size:7px;text-transform:uppercase;letter-spacing:.8px;font-weight:600;margin-left:4px}
+.threat-item .t-type.war{color:var(--red)}.threat-item .t-type.tension{color:var(--orange)}.threat-item .t-type.crisis{color:var(--yellow)}.threat-item .t-type.cyber{color:var(--purple)}
+.threat-item .t-desc{font-size:8.5px;color:var(--muted);line-height:1.3;margin-top:1px}
+
+/* GitHub repos */
+.gh-repo{display:block;padding:6px 0;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;transition:all .15s}
+.gh-repo:last-child{border-bottom:none}
+.gh-repo:hover{background:rgba(255,255,255,.02);padding-left:4px}
+.gh-repo .gh-top{display:flex;justify-content:space-between;align-items:center}
+.gh-repo .gh-name{font-size:10px;font-weight:600;color:var(--hi)}
+.gh-repo .gh-name span{color:var(--muted);font-weight:400}
+.gh-repo .gh-age{font-size:8px;font-weight:600;padding:1px 5px;border-radius:2px}
+.gh-repo .gh-age.fresh{color:var(--green);background:rgba(0,210,106,.1)}
+.gh-repo .gh-age.stale{color:var(--orange);background:rgba(255,159,67,.1)}
+.gh-repo .gh-age.old{color:var(--red);background:rgba(255,68,68,.1)}
+.gh-repo .gh-commit{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.gh-repo .gh-meta{display:flex;gap:8px;font-size:8px;color:var(--muted);margin-top:2px}
+.gh-repo .gh-meta span{color:var(--text)}
+
+/* Footer */
+footer{padding:6px 16px;font-size:8px;color:var(--muted);letter-spacing:1px;text-align:center;border-top:1px solid var(--border);text-transform:uppercase;background:linear-gradient(180deg,var(--panel),#030303)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">MONITOR <span>// ops dashboard</span></div>
+  <div class="meta">
+    <span class="live">LIVE</span>
+    <span id="lastUpdated">INIT</span>
+    <button class="refresh-btn" onclick="refreshAll()">REFRESH</button>
+  </div>
+</div>
+
+<!-- TOP ROW: Threats (narrow left) + Map (wide center) + World News (right) -->
+<div class="row-top">
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Active Threats</h2>
+      <div class="badge muted" id="threatCount"></div>
+    </div>
+    <div class="panel-body" id="threatListContent"></div>
+  </div>
+
+  <div class="panel map-panel" style="position:relative">
+    <div class="panel-head">
+      <h2>Global Threats</h2>
+      <div class="badge muted">CURATED INTEL</div>
+    </div>
+    <div class="panel-body" style="position:relative;padding:0;max-height:none">
+      <div class="map-vignette"></div>
+      <div class="map-tooltip" id="mapTooltip"></div>
+      <div id="mapContainer"><div class="loading" style="height:300px">Loading map</div></div>
+    </div>
+    <div class="map-legend">
+      <span><span class="dot" style="background:var(--red)"></span>Conflict</span>
+      <span><span class="dot" style="background:var(--orange)"></span>Tension</span>
+      <span><span class="dot" style="background:var(--yellow)"></span>Crisis</span>
+      <span><span class="dot" style="background:var(--purple)"></span>Cyber</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>World</h2>
+      <div class="tabs" id="worldNewsTabs"></div>
+    </div>
+    <div class="panel-body" id="worldNewsContent"><div class="loading">Fetching</div></div>
+  </div>
+
+</div>
+
+<!-- MAIN GRID: 3 equal columns -->
+<div class="grid">
+
+  <!-- ROW 2: News feeds (similar height) -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>AI</h2>
+      <div class="tabs" id="aiNewsTabs"></div>
+    </div>
+    <div class="panel-body" id="aiNewsContent"><div class="loading">Fetching</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Tech</h2>
+      <div class="tabs" id="techNewsTabs"></div>
+    </div>
+    <div class="panel-body" id="techNewsContent"><div class="loading">Fetching</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Anthropic</h2>
+      <div class="badge muted">HN + BLOG</div>
+    </div>
+    <div class="panel-body" id="anthropicNewsContent"><div class="loading">Fetching</div></div>
+  </div>
+
+  <!-- ROW 3: Markets + Microsoft -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Crypto</h2>
+      <div class="badge">LIVE</div>
+    </div>
+    <div class="panel-body" id="cryptoContent"><div class="loading">Fetching</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>ETFs &amp; Gold</h2>
+      <div class="badge">LIVE</div>
+    </div>
+    <div class="panel-body" id="etfContent"><div class="loading">Fetching</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Microsoft</h2>
+      <div class="badge muted">HN + BLOG</div>
+    </div>
+    <div class="panel-body" id="msNewsContent"><div class="loading">Fetching</div></div>
+  </div>
+
+  <!-- ROW 3b: Crypto News under ETFs column -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Crypto News</h2>
+      <div class="tabs" id="cryptoNewsTabs"></div>
+    </div>
+    <div class="panel-body" id="cryptoNewsContent"><div class="loading">Fetching</div></div>
+  </div>
+
+  <!-- ROW 4: Stocks | GitHub | Weather -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Stocks</h2>
+      <div class="badge">LIVE · EUR</div>
+    </div>
+    <div class="panel-body" id="stocksContent"><div class="loading">Fetching</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>GitHub</h2>
+      <div class="badge muted">REPOS</div>
+    </div>
+    <div class="panel-body" id="githubContent"><div class="loading">Fetching</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Weather</h2>
+      <button class="refresh-btn" onclick="showCitySearch()" style="font-size:7px;padding:2px 6px">CHANGE CITY</button>
+    </div>
+    <div class="panel-body" id="weatherContent"><div class="loading">Locating</div></div>
+  </div>
+
+</div>
+
+<footer>AUTO-REFRESH 10MIN &middot; COINGECKO &middot; HN ALGOLIA &middot; RSS2JSON &middot; NATURAL EARTH &middot; OPEN-METEO</footer>
+
+<script>
+// ===== UTILS =====
+const fmt=(n,d=2)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:d,maximumFractionDigits:d}).format(n);
+const fmtEur=n=>new Intl.NumberFormat('nl-NL',{style:'currency',currency:'EUR',minimumFractionDigits:2}).format(n);
+const fmtBig=n=>{if(n>=1e12)return'$'+(n/1e12).toFixed(1)+'T';if(n>=1e9)return'$'+(n/1e9).toFixed(1)+'B';if(n>=1e6)return'$'+(n/1e6).toFixed(1)+'M';return fmt(n)};
+const fmtBigEur=n=>{if(n>=1e12)return'€'+(n/1e12).toFixed(1)+'T';if(n>=1e9)return'€'+(n/1e9).toFixed(1)+'B';if(n>=1e6)return'€'+(n/1e6).toFixed(1)+'M';return fmtEur(n)};
+const escHtml=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML};
+const timeAgo=d=>{const s=Math.floor((Date.now()-new Date(d).getTime())/1000);if(s<60)return'now';if(s<3600)return(s/60|0)+'m';if(s<86400)return(s/3600|0)+'h';return(s/86400|0)+'d'};
+const arrow=v=>v>=0?'&#9650;':'&#9660;';
+const ud=v=>v>=0?'up':'down';
+
+// ===== CANDLESTICK CHART =====
+function drawCandlestick(id,ohlcData){
+  const c=document.getElementById(id);if(!c||!ohlcData||ohlcData.length<2)return;
+  const ctx=c.getContext('2d'),dpr=devicePixelRatio||1,rect=c.getBoundingClientRect();
+  c.width=rect.width*dpr;c.height=rect.height*dpr;ctx.scale(dpr,dpr);
+  const w=rect.width,h=rect.height,pad=2;
+
+  // ohlcData: [[timestamp, open, high, low, close], ...]
+  const highs=ohlcData.map(d=>d[2]),lows=ohlcData.map(d=>d[3]);
+  const mn=Math.min(...lows),mx=Math.max(...highs),rng=mx-mn||1;
+  const n=ohlcData.length,cw=Math.max(1,(w-pad*2)/n*0.65),gap=(w-pad*2)/n;
+
+  const yScale=v=>h-pad-((v-mn)/rng)*(h-pad*2);
+
+  // Grid lines
+  ctx.strokeStyle='#151518';ctx.lineWidth=0.5;
+  for(let i=0;i<5;i++){const y=pad+(h-pad*2)*i/4;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
+
+  // Price labels on right
+  ctx.fillStyle='#333';ctx.font='7px monospace';ctx.textAlign='right';
+  for(let i=0;i<5;i++){const v=mx-(mx-mn)*i/4;ctx.fillText(Math.round(v).toLocaleString(),w-2,pad+(h-pad*2)*i/4-2)}
+
+  ohlcData.forEach((d,i)=>{
+    const[,o,hi,lo,cl]=d;
+    const x=pad+i*gap+gap/2;
+    const bullish=cl>=o;
+    const col=bullish?'#00d26a':'#ff4444';
+
+    // Wick
+    ctx.strokeStyle=col;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(x,yScale(hi));ctx.lineTo(x,yScale(lo));ctx.stroke();
+
+    // Body
+    const yTop=yScale(Math.max(o,cl)),yBot=yScale(Math.min(o,cl));
+    const bodyH=Math.max(1,yBot-yTop);
+    ctx.fillStyle=bullish?col:'#ff4444';
+    ctx.fillRect(x-cw/2,yTop,cw,bodyH);
+
+    if(!bullish){ctx.strokeStyle=col;ctx.lineWidth=0.5;ctx.strokeRect(x-cw/2,yTop,cw,bodyH)}
+  });
+}
+
+// ===== RENDER NEWS =====
+function renderArticles(el,articles){
+  if(!articles.length){el.innerHTML='<div class="error-msg">No articles.</div>';return}
+  el.innerHTML=articles.map(a=>`
+    <a class="news-item" href="${a.url}" target="_blank" rel="noopener">
+      <h3>${escHtml(a.title)}</h3>
+      <div class="nm"><span class="src">${escHtml(a.source)}</span><span>${a.points?a.points+'pt ':''}${a.comments?a.comments+'c ':''}${a.time}</span></div>
+    </a>`).join('');
+}
+
+// ===== RSS =====
+async function fetchRSS(url){
+  const r=await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(url));
+  const d=await r.json();if(d.status!=='ok')throw new Error(d.message||'RSS fail');
+  return d.items.map(i=>({title:i.title,url:i.link,description:(i.description||'').replace(/<[^>]*>/g,'').trim(),source:d.feed.title||'RSS',time:timeAgo(i.pubDate)}));
+}
+
+// ===== COINGECKO RATE-LIMIT SAFE FETCH =====
+const delay=ms=>new Promise(r=>setTimeout(r,ms));
+let cgCache={ts:0,data:null};
+let ohlcCache={};
+
+async function fetchCoinGeckoData(){
+  if(cgCache.data&&Date.now()-cgCache.ts<300000)return cgCache.data;
+  const mkt=await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=eur&ids=bitcoin,ethereum,solana,tether-gold&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d').then(r=>r.json());
+  cgCache={ts:Date.now(),data:{mkt}};
+  return cgCache.data;
+}
+
+const TF_LABELS={'1':'1D · 30M','7':'7D · 4H','30':'30D · 4H','180':'180D · 4D','365':'1Y · 4D'};
+let currentTF='7';
+
+async function fetchOHLC(days){
+  const key='btc_'+days;
+  if(ohlcCache[key]&&Date.now()-ohlcCache[key].ts<300000)return ohlcCache[key].data;
+  const ohlc=await fetch('https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=eur&days='+days).then(r=>r.json());
+  ohlcCache[key]={data:ohlc,ts:Date.now()};
+  return ohlc;
+}
+
+async function switchTF(days){
+  currentTF=days;
+  document.querySelectorAll('.chart-tf button').forEach(b=>b.classList.toggle('active',b.dataset.tf===days));
+  const label=document.getElementById('chartLabel');
+  if(label)label.textContent='BTC/EUR '+TF_LABELS[days];
+  const canvas=document.getElementById('btcCandle');
+  if(!canvas)return;
+  try{
+    const ohlc=await fetchOHLC(days);
+    if(ohlc&&ohlc.length>2)drawCandlestick('btcCandle',ohlc);
+  }catch(e){/* rate limited */}
+}
+
+// ===== CRYPTO =====
+async function fetchCrypto(){
+  const el=document.getElementById('cryptoContent');
+  try{
+    const{mkt}=await fetchCoinGeckoData();
+    const coins=mkt.filter(c=>c.id!=='tether-gold');
+    let h='';
+    coins.forEach((c,i)=>{
+      const c24=c.price_change_percentage_24h_in_currency||0,c7d=c.price_change_percentage_7d_in_currency||0;
+      h+=`<div class="price-row"><div><span class="sym">${c.symbol.toUpperCase()}</span><span class="name">${c.name}</span></div><div><span class="val">${fmtEur(c.current_price)}</span>
+        <span class="chg ${ud(c24)}">${arrow(c24)}${Math.abs(c24).toFixed(1)}%</span><span class="chg ${ud(c7d)}">${arrow(c7d)}${Math.abs(c7d).toFixed(1)}%</span></div></div>`;
+      if(i===0){
+        h+=`<div class="stat-row"><div>MCap <span>${fmtBigEur(c.market_cap)}</span></div><div>Vol <span>${fmtBigEur(c.total_volume)}</span></div></div>`;
+        h+=`<div class="chart-tf">${Object.keys(TF_LABELS).map(d=>`<button data-tf="${d}" class="${d===currentTF?'active':''}" onclick="switchTF('${d}')">${d==='365'?'1Y':d+'D'}</button>`).join('')}</div>`;
+        h+=`<div class="sparkline-wrap"><canvas id="btcCandle"></canvas><div class="chart-label" id="chartLabel">BTC/EUR ${TF_LABELS[currentTF]}</div></div>`;
+      }
+    });
+    el.innerHTML=h;
+    try{
+      const ohlc=await fetchOHLC(currentTF);
+      if(ohlc&&ohlc.length>2)setTimeout(()=>drawCandlestick('btcCandle',ohlc),30);
+    }catch(e){/* ohlc fetch failed, chart just stays empty */}
+  }catch(e){el.innerHTML='<div class="error-msg">CoinGecko rate limit -- will retry in 10min</div>'}
+}
+
+// ===== ETFs & GOLD =====
+async function fetchYahooQuote(ticker){
+  const r=await fetch('/api/quote/'+encodeURIComponent(ticker));
+  if(!r.ok)throw new Error('quote failed');
+  return r.json();
+}
+async function fetchETFs(){
+  const el=document.getElementById('etfContent');
+  try{
+    const{mkt}=await fetchCoinGeckoData();
+    const gold=mkt.find(c=>c.id==='tether-gold');
+    let h='';
+    if(gold){
+      const gc=gold.price_change_percentage_24h_in_currency||0;
+      h+=`<div class="price-row"><div><span class="sym">XAU</span><span class="name">Gold</span></div><div><span class="val">${fmtEur(gold.current_price)}</span>
+        <span class="chg ${ud(gc)}">${arrow(gc)}${Math.abs(gc).toFixed(1)}%</span></div></div>`;
+      h+=`<div class="note">via xaut proxy</div>`;
+    }
+    h+=`<div style="padding-top:6px;border-top:1px solid var(--border);margin-top:6px"></div>`;
+    const etfs=await Promise.allSettled([fetchYahooQuote('NUKZ'),fetchYahooQuote('VWCE.DE')]);
+    const names={'NUKZ':'Range Nuclear Renaissance','VWCE.DE':'Vanguard FTSE All-World'};
+    etfs.forEach(r=>{
+      if(r.status==='fulfilled'){
+        const e=r.value,sym=e.ticker.replace('.DE','');
+        const priceEur=e.currency==='EUR'?e.price:e.priceEur||e.price;
+        h+=`<div class="price-row"><div><span class="sym">${sym}</span><span class="name">${names[e.ticker]||e.ticker}</span></div><div><span class="val">${fmtEur(priceEur)}</span>
+          <span class="chg ${ud(e.chg)}">${arrow(e.chg)}${Math.abs(e.chg).toFixed(1)}%</span></div></div>`;
+      }
+    });
+    if(etfs.every(r=>r.status==='rejected'))h+=`<div class="note">yahoo finance unavailable</div>`;
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<div class="error-msg">Market data unavailable</div>'}
+}
+
+// ===== STOCKS =====
+const STOCK_TICKERS=['MSFT','NVDA','AAPL','GOOGL','TSLA','META','AMZN'];
+async function fetchStocks(){
+  const el=document.getElementById('stocksContent');
+  try{
+    const r=await fetch('/api/quotes?symbols='+STOCK_TICKERS.join(','));
+    if(!r.ok)throw new Error('quotes failed');
+    const data=await r.json();
+    let h='';
+    STOCK_TICKERS.forEach(t=>{
+      const q=data[t];
+      if(!q||q.error)return;
+      const price=q.priceEur!=null?q.priceEur:q.price;
+      h+=`<div class="price-row"><div><span class="sym">${t}</span></div><div><span class="val">${fmtEur(price)}</span>
+        <span class="chg ${ud(q.chg)}">${arrow(q.chg)}${Math.abs(q.chg).toFixed(1)}%</span></div></div>`;
+    });
+    el.innerHTML=h||'<div class="error-msg">No stock data</div>';
+  }catch(e){el.innerHTML='<div class="error-msg">Stock data unavailable</div>'}
+}
+
+// ===== GENERIC NEWS FEED FACTORY =====
+function createFeed(cfg){
+  let cur='all';
+  async function fetch_(){
+    const el=document.getElementById(cfg.contentId);
+    if(cfg.tabId){
+      document.getElementById(cfg.tabId).innerHTML=cfg.sources.map(s=>
+        `<button class="tab ${s.id===cur?'active':''}" onclick="window['sw_${cfg.contentId}']('${s.id}')">${s.label}</button>`
+      ).join('');
+    }
+    el.innerHTML='<div class="loading">Fetching</div>';
+    try{
+      const fs=[];
+      cfg.sources.forEach(src=>{
+        if(src.id==='all')return;
+        if(cur!=='all'&&cur!==src.id)return;
+        if(src.type==='hn')fs.push(fetch(src.url).then(r=>r.json()).then(d=>d.hits.map(h=>({title:h.title,url:h.url||'https://news.ycombinator.com/item?id='+h.objectID,source:src.label,time:timeAgo(h.created_at),points:h.points,comments:h.num_comments}))).catch(()=>[]));
+        else if(src.type==='rss')fs.push(fetchRSS(src.url).then(items=>{if(src.filter)items=items.filter(i=>src.filter.test(i.title+' '+i.description));return items.map(i=>({...i,source:src.label}))}).catch(()=>[]));
+      });
+      let arts=(await Promise.all(fs)).flat();
+      if(cur==='all')arts.sort(()=>Math.random()-.5);
+      renderArticles(el,arts.slice(0,15));
+    }catch(e){el.innerHTML='<div class="error-msg">Feed error</div>'}
+  }
+  window['sw_'+cfg.contentId]=id=>{cur=id;fetch_()};
+  return fetch_;
+}
+
+// ===== FEED CONFIGS =====
+const fetchAINews=createFeed({contentId:'aiNewsContent',tabId:'aiNewsTabs',sources:[
+  {id:'all',label:'All'},
+  {id:'hn',label:'HN',type:'hn',url:'https://hn.algolia.com/api/v1/search_by_date?query=AI+LLM+GPT+Claude+OpenAI+Anthropic&tags=story&hitsPerPage=12'},
+  {id:'tc',label:'TC',type:'rss',url:'https://techcrunch.com/category/artificial-intelligence/feed/'},
+  {id:'mtp',label:'MTP',type:'rss',url:'https://www.marktechpost.com/feed'},
+  {id:'txp',label:'TXP',type:'rss',url:'https://techxplore.com/rss-feed/machine-learning-ai-news/'},
+  {id:'google',label:'Google',type:'rss',url:'https://research.google/blog/rss'}
+]});
+
+const fetchTechNews=createFeed({contentId:'techNewsContent',tabId:'techNewsTabs',sources:[
+  {id:'all',label:'All'},
+  {id:'hn',label:'HN',type:'hn',url:'https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=12'},
+  {id:'tc',label:'TC',type:'rss',url:'https://techcrunch.com/feed/'},
+  {id:'verge',label:'Verge',type:'rss',url:'https://www.theverge.com/rss/index.xml'}
+]});
+
+const fetchAnthropicNews=createFeed({contentId:'anthropicNewsContent',sources:[
+  {id:'all',label:'All'},
+  {id:'hn',label:'HN',type:'hn',url:'https://hn.algolia.com/api/v1/search_by_date?query=Anthropic+Claude&tags=story&hitsPerPage=12'},
+  {id:'blog',label:'Blog',type:'rss',url:'https://www.anthropic.com/rss.xml'}
+]});
+
+const fetchCryptoNews=createFeed({contentId:'cryptoNewsContent',tabId:'cryptoNewsTabs',sources:[
+  {id:'all',label:'All'},
+  {id:'hn',label:'HN',type:'hn',url:'https://hn.algolia.com/api/v1/search_by_date?query=Bitcoin+Ethereum+crypto+blockchain&tags=story&hitsPerPage=10'},
+  {id:'cd',label:'CDesk',type:'rss',url:'https://www.coindesk.com/arc/outboundfeeds/rss/'},
+  {id:'ct',label:'CTel',type:'rss',url:'https://cointelegraph.com/rss'}
+]});
+
+const fetchMSNews=createFeed({contentId:'msNewsContent',sources:[
+  {id:'all',label:'All'},
+  {id:'hn',label:'HN',type:'hn',url:'https://hn.algolia.com/api/v1/search_by_date?query=Microsoft+Azure+Copilot+Windows&tags=story&hitsPerPage=12'},
+  {id:'blog',label:'Blog',type:'rss',url:'https://blogs.microsoft.com/feed/'}
+]});
+
+const fetchWorldNews=createFeed({contentId:'worldNewsContent',tabId:'worldNewsTabs',sources:[
+  {id:'all',label:'All'},
+  {id:'bbc',label:'BBC',type:'rss',url:'https://feeds.bbci.co.uk/news/world/rss.xml'},
+  {id:'reuters',label:'Reuters',type:'rss',url:'https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best'},
+  {id:'guardian',label:'Guardian',type:'rss',url:'https://www.theguardian.com/world/rss'},
+  {id:'telegraaf',label:'Telegraaf',type:'rss',url:'https://www.telegraaf.nl/rss'}
+]});
+
+// ===== THREAT MAP =====
+const THREATS=[
+  {lat:48.5,lon:35.5,name:'Ukraine',type:'war',desc:'Russia-Ukraine war since Feb 2022.'},
+  {lat:31.5,lon:34.5,name:'Gaza/Israel',type:'war',desc:'Israel-Hamas conflict. Military ops in Gaza.'},
+  {lat:15.5,lon:48.5,name:'Yemen',type:'war',desc:'Houthi Red Sea attacks. US/UK strikes.'},
+  {lat:13.5,lon:33.5,name:'Sudan',type:'war',desc:'RSF vs SAF civil war. Humanitarian crisis.'},
+  {lat:6.5,lon:38.7,name:'Ethiopia',type:'war',desc:'Fano militia vs federal forces.'},
+  {lat:2.0,lon:45.3,name:'Somalia',type:'war',desc:'Al-Shabaab insurgency.'},
+  {lat:19.0,lon:-72.0,name:'Haiti',type:'war',desc:'Gang violence. Armed groups control capital.'},
+  {lat:33.9,lon:36.3,name:'Syria',type:'war',desc:'Post-Assad transition. HTS governance.'},
+  {lat:5.0,lon:10.0,name:'Cameroon',type:'war',desc:'Ambazonia separatist conflict.'},
+  {lat:-3.0,lon:29.0,name:'DRC East',type:'war',desc:'M23 rebellion. Rwanda backing.'},
+  {lat:14.0,lon:-1.5,name:'Sahel',type:'war',desc:'Mali/Burkina/Niger juntas. Wagner presence.'},
+  {lat:23.0,lon:90.3,name:'Myanmar',type:'war',desc:'Military junta vs resistance.'},
+  {lat:25.0,lon:121.5,name:'Taiwan Strait',type:'tension',desc:'China-Taiwan tensions. PLA activity.'},
+  {lat:39.0,lon:125.7,name:'Korea',type:'tension',desc:'DPRK missiles. Relations frozen.'},
+  {lat:27.0,lon:90.0,name:'India-China',type:'tension',desc:'LAC standoff. Tensions persist.'},
+  {lat:10.0,lon:114.0,name:'South China Sea',type:'tension',desc:'China vs Philippines. Naval confrontations.'},
+  {lat:32.0,lon:53.0,name:'Iran',type:'tension',desc:'Nuclear tensions. Proxy conflicts.'},
+  {lat:37.0,lon:67.0,name:'Afghanistan',type:'tension',desc:'Taliban rule. ISIS-K attacks.'},
+  {lat:44.0,lon:20.5,name:'Serbia-Kosovo',type:'tension',desc:'N. Kosovo tensions. EU dialogue stalled.'},
+  {lat:34.5,lon:69.1,name:'Afghan Crisis',type:'crisis',desc:'Famine risk. 23M+ need aid.'},
+  {lat:26.8,lon:30.8,name:'Egypt',type:'crisis',desc:'Currency crisis. Food insecurity.'},
+  {lat:18.7,lon:-70.2,name:'Venezuela',type:'crisis',desc:'7M+ refugees. Largest displacement in Americas.'},
+  {lat:58.0,lon:25.0,name:'Baltics',type:'cyber',desc:'Russian hybrid warfare. GPS jamming.'},
+  {lat:61.5,lon:24.0,name:'Finland',type:'cyber',desc:'Undersea cable threats. Shadow fleet.'},
+  {lat:55.7,lon:37.6,name:'Russia',type:'cyber',desc:'State cyber campaigns vs Western infra.'},
+  {lat:39.9,lon:116.4,name:'China',type:'cyber',desc:'Volt/Salt Typhoon. Critical infra targeting.'},
+  {lat:35.7,lon:51.4,name:'Iran',type:'cyber',desc:'Cyber attacks on water/energy systems.'},
+];
+const typeColors={war:'#ff4444',tension:'#ff9f43',crisis:'#feca57',cyber:'#a29bfe'};
+
+function project(lat,lon,w,h){
+  const x=(lon+180)/360*w;
+  const lr=lat*Math.PI/180;
+  const y=h/2-(Math.log(Math.tan(Math.PI/4+lr/2))/Math.PI)*(h/2);
+  return[x,y];
+}
+
+async function initMap(){
+  const ct=document.getElementById('mapContainer');
+  try{
+    const[topo]=await Promise.all([
+      fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(r=>r.json()),
+      new Promise(res=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js';s.onload=res;document.head.appendChild(s)})
+    ]);
+    const countries=topojson.feature(topo,topo.objects.countries);
+    const W=960,H=480;
+    let svg=`<svg id="worldMap" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+    // Defs: glow filters for threat markers
+    svg+=`<defs>`;
+    svg+=`<filter id="glow-red" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/><feComposite in="SourceGraphic" in2="blur" operator="over"/></filter>`;
+    svg+=`<filter id="glow-orange" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur"/><feComposite in="SourceGraphic" in2="blur" operator="over"/></filter>`;
+    svg+=`<filter id="glow-yellow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/><feComposite in="SourceGraphic" in2="blur" operator="over"/></filter>`;
+    svg+=`<filter id="glow-purple" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/><feComposite in="SourceGraphic" in2="blur" operator="over"/></filter>`;
+    svg+=`<radialGradient id="ocean-grad" cx="50%" cy="50%" r="60%"><stop offset="0%" stop-color="#0a1628"/><stop offset="100%" stop-color="#040a14"/></radialGradient>`;
+    svg+=`</defs>`;
+    // Ocean background
+    svg+=`<rect width="${W}" height="${H}" fill="url(#ocean-grad)"/>`;
+    // Grid lines — faint cyan
+    for(let lo=-180;lo<=180;lo+=30){const x=(lo+180)/360*W;svg+=`<line x1="${x}" y1="0" x2="${x}" y2="${H}" stroke="#0d2535" stroke-width=".5" stroke-dasharray="2,4"/>`}
+    for(let la=-60;la<=80;la+=20){const[,y]=project(la,0,W,H);svg+=`<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#0d2535" stroke-width=".5" stroke-dasharray="2,4"/>`}
+    countries.features.forEach(f=>{
+      const polys=f.geometry.type==='Polygon'?[f.geometry.coordinates]:f.geometry.coordinates;
+      polys.forEach(p=>p.forEach(ring=>{
+        let d='';ring.forEach((c,i)=>{const[x,y]=project(c[1],c[0],W,H);d+=(i?'L':'M')+x.toFixed(1)+','+y.toFixed(1)});
+        svg+=`<path class="land" d="${d}Z"/>`;
+      }));
+    });
+    const glowIds={war:'glow-red',tension:'glow-orange',crisis:'glow-yellow',cyber:'glow-purple'};
+    THREATS.forEach((t,i)=>{
+      const[x,y]=project(t.lat,t.lon,W,H),col=typeColors[t.type],r=t.type==='war'?5:4,glow=glowIds[t.type];
+      // Outer glow halo
+      svg+=`<circle cx="${x}" cy="${y}" r="${r+6}" fill="${col}" opacity=".08" filter="url(#${glow})"/>`;
+      // Pulse ring for conflicts
+      if(t.type==='war'){
+        svg+=`<circle cx="${x}" cy="${y}" r="${r+4}" fill="none" stroke="${col}" stroke-width=".8" opacity=".6"><animate attributeName="r" values="${r+2};${r+14};${r+2}" dur="3s" repeatCount="indefinite"/><animate attributeName="opacity" values=".6;0;.6" dur="3s" repeatCount="indefinite"/></circle>`;
+        svg+=`<circle cx="${x}" cy="${y}" r="${r+2}" fill="none" stroke="${col}" stroke-width=".4" opacity=".3"><animate attributeName="r" values="${r};${r+10};${r}" dur="2.5s" repeatCount="indefinite"/><animate attributeName="opacity" values=".3;0;.3" dur="2.5s" repeatCount="indefinite"/></circle>`;
+      } else if(t.type==='tension'){
+        svg+=`<circle cx="${x}" cy="${y}" r="${r+3}" fill="none" stroke="${col}" stroke-width=".5" opacity=".4"><animate attributeName="r" values="${r+1};${r+8};${r+1}" dur="4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".4;0;.4" dur="4s" repeatCount="indefinite"/></circle>`;
+      }
+      // Core dot
+      svg+=`<circle class="threat-dot" cx="${x}" cy="${y}" r="${r}" fill="${col}" opacity=".9" filter="url(#${glow})" onmouseenter="showT(event,${i})" onmouseleave="hideT()"/>`;
+      // Label with shadow
+      const lx=x+r+6,ly=y+3;
+      svg+=`<text class="threat-label" x="${lx}" y="${ly}" fill="#000" font-family="'SF Mono','Fira Code',monospace" font-size="7" font-weight="700" letter-spacing="1.2" dx="0.5" dy="0.5">${t.name.toUpperCase()}</text>`;
+      svg+=`<text class="threat-label" x="${lx}" y="${ly}" fill="${col}" font-family="'SF Mono','Fira Code',monospace" font-size="7" font-weight="700" letter-spacing="1.2" opacity=".9">${t.name.toUpperCase()}</text>`;
+    });
+    svg+='</svg>';ct.innerHTML=svg;
+  }catch(e){ct.innerHTML='<div class="error-msg">Map load failed</div>'}
+}
+
+// Populate threat list panel
+function renderThreatList(){
+  const labels={war:'CONFLICT',tension:'TENSION',crisis:'HUMANITARIAN',cyber:'CYBER'};
+  const counts={war:0,tension:0,crisis:0,cyber:0};
+  THREATS.forEach(t=>counts[t.type]++);
+  document.getElementById('threatCount').textContent=THREATS.length+' ACTIVE';
+  const sorted=[...THREATS].sort((a,b)=>{const o={war:0,tension:1,crisis:2,cyber:3};return o[a.type]-o[b.type]});
+  document.getElementById('threatListContent').innerHTML=sorted.map(t=>
+    `<div class="threat-item"><div class="t-dot" style="background:${typeColors[t.type]}"></div><div><span class="t-name">${escHtml(t.name)}</span><span class="t-type ${t.type}">${labels[t.type]}</span><div class="t-desc">${escHtml(t.desc)}</div></div></div>`
+  ).join('');
+}
+
+function showT(e,i){
+  const t=THREATS[i],tp=document.getElementById('mapTooltip');
+  const labels={war:'ACTIVE CONFLICT',tension:'TENSION',crisis:'HUMANITARIAN',cyber:'CYBER/HYBRID'};
+  tp.innerHTML=`<div class="tt-type ${t.type}">${labels[t.type]}</div><div class="tt-title">${t.name}</div><div style="color:var(--muted)">${t.desc}</div>`;
+  tp.style.display='block';
+  const wrap=document.getElementById('mapContainer').closest('.panel-body'),rect=wrap.getBoundingClientRect();
+  let ex=e.clientX-rect.left,ey=e.clientY-rect.top;
+  tp.style.left=(ex+12)+'px';tp.style.top=(ey-8)+'px';
+  const tr=tp.getBoundingClientRect();
+  if(tr.right>rect.right)tp.style.left=(ex-tr.width-8)+'px';
+  if(tr.bottom>rect.bottom)tp.style.top=(ey-tr.height)+'px';
+}
+function hideT(){document.getElementById('mapTooltip').style.display='none'}
+
+// ===== WEATHER =====
+const WMO_ICONS={'0':'☀️','1':'🌤','2':'⛅','3':'☁️','45':'🌫','48':'🌫','51':'🌦','53':'🌧','55':'🌧','56':'🌨','57':'🌨','61':'🌧','63':'🌧','65':'🌧','66':'🌨','67':'🌨','71':'🌨','73':'❄️','75':'❄️','77':'❄️','80':'🌦','81':'🌧','82':'🌧','85':'❄️','86':'❄️','95':'⛈','96':'⛈','99':'⛈'};
+const WMO_DESC={'0':'Clear sky','1':'Mainly clear','2':'Partly cloudy','3':'Overcast','45':'Fog','48':'Rime fog','51':'Light drizzle','53':'Drizzle','55':'Dense drizzle','56':'Freezing drizzle','57':'Dense freezing drizzle','61':'Light rain','63':'Rain','65':'Heavy rain','66':'Freezing rain','67':'Heavy freezing rain','71':'Light snow','73':'Snow','75':'Heavy snow','77':'Snow grains','80':'Light showers','81':'Showers','82':'Violent showers','85':'Snow showers','86':'Heavy snow showers','95':'Thunderstorm','96':'Thunderstorm w/ hail','99':'Thunderstorm w/ heavy hail'};
+const windDir=d=>{const dirs=['N','NE','E','SE','S','SW','W','NW'];return dirs[Math.round(d/45)%8]};
+const DAYS=['SUN','MON','TUE','WED','THU','FRI','SAT'];
+
+let weatherLoc=JSON.parse(localStorage.getItem('weatherLoc'))||null; // {lat,lon,name,country}
+
+async function resolveLocation(){
+  if(weatherLoc)return weatherLoc;
+  const pos=await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:8000}));
+  const lat=+pos.coords.latitude.toFixed(2),lon=+pos.coords.longitude.toFixed(2);
+  const geo=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`).then(r=>r.json()).catch(()=>null);
+  const name=geo?(geo.address.city||geo.address.town||geo.address.village||geo.address.county||'Unknown'):'Unknown';
+  const country=geo?(geo.address.country_code||'').toUpperCase():'';
+  return{lat,lon,name,country};
+}
+
+function showCitySearch(){
+  const el=document.getElementById('weatherContent');
+  el.innerHTML=`
+    <div class="city-search">
+      <input type="text" id="cityInput" placeholder="Search city..." autofocus/>
+      <button onclick="searchCity()">GO</button>
+    </div>
+    <ul class="city-results" id="cityResults"></ul>
+    <div style="padding-top:4px"><button class="change-btn" onclick="useMyLocation()" style="border:1px solid var(--border);background:none;color:var(--muted);padding:3px 8px;font-family:inherit;font-size:8px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;border-radius:2px">⊕ Use my location</button></div>`;
+  document.getElementById('cityInput').addEventListener('keydown',e=>{if(e.key==='Enter')searchCity()});
+}
+
+async function searchCity(){
+  const q=document.getElementById('cityInput').value.trim();
+  if(!q)return;
+  const ul=document.getElementById('cityResults');
+  ul.innerHTML='<li style="color:var(--muted)">Searching...</li>';
+  try{
+    const r=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=en`);
+    const d=await r.json();
+    if(!d.results||!d.results.length){ul.innerHTML='<li style="color:var(--muted)">No results</li>';return}
+    ul.innerHTML=d.results.map((c,i)=>
+      `<li onclick="selectCity(${i})" data-idx="${i}">${escHtml(c.name)}<span>${escHtml(c.admin1||'')}${c.country_code?' · '+c.country_code:''}</span></li>`
+    ).join('');
+    window._cityResults=d.results;
+  }catch(e){ul.innerHTML='<li style="color:var(--red)">Search failed</li>'}
+}
+
+function selectCity(i){
+  const c=window._cityResults[i];
+  weatherLoc={lat:c.latitude,lon:c.longitude,name:c.name,country:c.country_code||''};
+  localStorage.setItem('weatherLoc',JSON.stringify(weatherLoc));
+  fetchWeather();
+}
+
+function useMyLocation(){
+  weatherLoc=null;
+  localStorage.removeItem('weatherLoc');
+  fetchWeather();
+}
+
+async function fetchWeather(){
+  const el=document.getElementById('weatherContent');
+  el.innerHTML='<div class="loading">Fetching weather</div>';
+  try{
+    const loc=await resolveLocation();
+    const weather=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,uv_index&daily=weather_code,temperature_2m_max,temperature_2m_min&wind_speed_unit=kmh&timezone=auto&forecast_days=6`).then(r=>r.json());
+    const c=weather.current;
+    const code=String(c.weather_code);
+    const icon=WMO_ICONS[code]||'🌡';
+    const desc=WMO_DESC[code]||'Unknown';
+
+    // 5-day forecast (skip today)
+    let fcHtml='<div class="weather-forecast">';
+    for(let i=1;i<6&&i<weather.daily.time.length;i++){
+      const day=DAYS[new Date(weather.daily.time[i]).getDay()];
+      const fc=String(weather.daily.weather_code[i]);
+      fcHtml+=`<div class="fc-day"><div class="fc-name">${day}</div><div class="fc-icon">${WMO_ICONS[fc]||'🌡'}</div><div class="fc-temps">${Math.round(weather.daily.temperature_2m_max[i])}° <span class="fc-lo">${Math.round(weather.daily.temperature_2m_min[i])}°</span></div></div>`;
+    }
+    fcHtml+='</div>';
+
+    el.innerHTML=`
+      <div class="weather-main">
+        <div class="weather-icon">${icon}</div>
+        <div><div class="weather-temp">${c.temperature_2m}°C</div><div class="weather-desc">${desc}</div></div>
+      </div>
+      <div class="weather-details">
+        <span class="wd-label">Feels like</span><span class="wd-val">${c.apparent_temperature}°C</span>
+        <span class="wd-label">Humidity</span><span class="wd-val">${c.relative_humidity_2m}%</span>
+        <span class="wd-label">Wind</span><span class="wd-val">${c.wind_speed_10m} km/h ${windDir(c.wind_direction_10m)}</span>
+        <span class="wd-label">UV Index</span><span class="wd-val">${c.uv_index}</span>
+      </div>
+      <div class="weather-loc"><span>${escHtml(loc.name)}${loc.country?' · '+loc.country:''}</span><button class="change-btn" onclick="showCitySearch()">CHANGE</button></div>
+      ${fcHtml}`;
+  }catch(e){
+    el.innerHTML=e.code===1?'<div class="error-msg">Location access denied</div>':'<div class="error-msg">Weather unavailable</div>';
+    el.innerHTML+=`<div style="padding-top:6px"><button class="change-btn" onclick="showCitySearch()" style="border:1px solid var(--border);background:none;color:var(--muted);padding:3px 8px;font-family:inherit;font-size:8px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;border-radius:2px">Search city manually</button></div>`;
+  }
+}
+
+// ===== GITHUB REPOS =====
+function repoAge(dateStr){
+  if(!dateStr)return{text:'N/A',cls:'old'};
+  const hrs=Math.floor((Date.now()-new Date(dateStr).getTime())/3600000);
+  if(hrs<24)return{text:hrs+'h ago',cls:'fresh'};
+  if(hrs<168)return{text:Math.floor(hrs/24)+'d ago',cls:'fresh'};
+  if(hrs<720)return{text:Math.floor(hrs/24)+'d ago',cls:'stale'};
+  return{text:Math.floor(hrs/720)+'mo ago',cls:'old'};
+}
+async function fetchGitHub(){
+  const el=document.getElementById('githubContent');
+  try{
+    const r=await fetch('/api/github');
+    if(!r.ok)throw new Error('failed');
+    const repos=await r.json();
+    el.innerHTML=repos.map(repo=>{
+      const age=repoAge(repo.lastCommitDate);
+      const owner=repo.repo.split('/')[0];
+      return`<a class="gh-repo" href="https://github.com/${repo.repo}" target="_blank" rel="noopener">
+        <div class="gh-top"><div class="gh-name"><span>${escHtml(owner)}/</span>${escHtml(repo.name)}</div><span class="gh-age ${age.cls}">${age.text}</span></div>
+        <div class="gh-commit">${escHtml(repo.lastCommitMsg)}</div>
+        <div class="gh-meta">★ <span>${(repo.stars||0).toLocaleString()}</span> · Issues <span>${repo.openIssues||0}</span> · by <span>${escHtml(repo.lastCommitAuthor)}</span></div>
+      </a>`;
+    }).join('');
+  }catch(e){el.innerHTML='<div class="error-msg">GitHub unavailable</div>'}
+}
+
+// ===== REFRESH =====
+function refreshAll(){
+  document.getElementById('lastUpdated').textContent='UPDATING...';
+  Promise.all([fetchCrypto(),fetchETFs(),fetchStocks(),fetchGitHub(),fetchAINews(),fetchTechNews(),fetchAnthropicNews(),fetchCryptoNews(),fetchMSNews(),fetchWorldNews(),fetchWeather()]).then(()=>{
+    document.getElementById('lastUpdated').textContent=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  });
+}
+initMap();
+renderThreatList();
+refreshAll();
+setInterval(refreshAll,600000);
+</script>
+</body>
+</html>
