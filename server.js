@@ -14,11 +14,19 @@ async function cachedFetch(key, fn) {
   return data;
 }
 
+// Yahoo Finance headers & base URL
+const YAHOO_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'application/json',
+  'Accept-Language': 'en-US,en;q=0.9'
+};
+const YAHOO_BASE = 'https://query2.finance.yahoo.com';
+
 // Fetch USD→EUR rate from Yahoo
 async function getUsdEurRate() {
   return cachedFetch('USDEUR', async () => {
-    const url = 'https://query1.finance.yahoo.com/v8/finance/chart/EURUSD=X?range=1d&interval=1d';
-    const resp = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MonitorDashboard/1.0)' } });
+    const url = `${YAHOO_BASE}/v8/finance/chart/EURUSD=X?range=1d&interval=1d`;
+    const resp = await fetch(url, { headers: YAHOO_HEADERS });
     const raw = await resp.json();
     const rate = raw.chart.result[0].meta.regularMarketPrice;
     return 1 / rate; // USD→EUR
@@ -28,33 +36,38 @@ async function getUsdEurRate() {
 // Serve static files from current directory
 app.use(express.static(path.join(__dirname), { index: 'dashboard.html' }));
 
+// Core quote fetch function (shared by single & batch)
+async function fetchQuote(ticker) {
+  return cachedFetch(ticker, async () => {
+    const url = `${YAHOO_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?range=2d&interval=1d`;
+    const resp = await fetch(url, { headers: YAHOO_HEADERS });
+    if (!resp.ok) throw new Error(`Yahoo returned ${resp.status}`);
+    const raw = await resp.json();
+    const result = raw.chart.result[0], meta = result.meta;
+    const closes = result.indicators.quote[0].close.filter(v => v != null);
+    const prev = closes.length > 1 ? closes[closes.length - 2] : meta.chartPreviousClose;
+    const price = meta.regularMarketPrice;
+    const chg = prev ? ((price - prev) / prev) * 100 : 0;
+
+    let priceEur = null;
+    if (meta.currency === 'USD') {
+      const rate = await getUsdEurRate();
+      priceEur = Math.round(price * rate * 100) / 100;
+    }
+
+    return {
+      ticker: meta.symbol, price, currency: meta.currency,
+      chg: Math.round(chg * 100) / 100,
+      priceEur
+    };
+  });
+}
+
 // Single quote endpoint
 app.get('/api/quote/:ticker', async (req, res) => {
   const ticker = req.params.ticker.toUpperCase();
   try {
-    const data = await cachedFetch(ticker, async () => {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=2d&interval=1d`;
-      const resp = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MonitorDashboard/1.0)' } });
-      if (!resp.ok) throw new Error(`Yahoo returned ${resp.status}`);
-      const raw = await resp.json();
-      const result = raw.chart.result[0], meta = result.meta;
-      const closes = result.indicators.quote[0].close.filter(v => v != null);
-      const prev = closes.length > 1 ? closes[closes.length - 2] : meta.chartPreviousClose;
-      const price = meta.regularMarketPrice;
-      const chg = prev ? ((price - prev) / prev) * 100 : 0;
-
-      let priceEur = null;
-      if (meta.currency === 'USD') {
-        const rate = await getUsdEurRate();
-        priceEur = Math.round(price * rate * 100) / 100;
-      }
-
-      return {
-        ticker: meta.symbol, price, currency: meta.currency,
-        chg: Math.round(chg * 100) / 100,
-        priceEur
-      };
-    });
+    const data = await fetchQuote(ticker);
     res.json(data);
   } catch (e) {
     console.error(`[quote] ${ticker}: ${e.message}`);
@@ -67,13 +80,7 @@ app.get('/api/quotes', async (req, res) => {
   const tickers = (req.query.symbols || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
   if (!tickers.length) return res.status(400).json({ error: 'No symbols provided' });
 
-  const results = await Promise.allSettled(
-    tickers.map(async ticker => {
-      const r = await fetch(`http://localhost:${PORT}/api/quote/${encodeURIComponent(ticker)}`);
-      if (!r.ok) throw new Error('failed');
-      return r.json();
-    })
-  );
+  const results = await Promise.allSettled(tickers.map(fetchQuote));
 
   const data = {};
   results.forEach((r, i) => {
