@@ -22,7 +22,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
 .topbar .logo{font-size:12px;font-weight:700;letter-spacing:6px;color:var(--hi);text-transform:uppercase;display:flex;align-items:center;gap:8px}
 .topbar .logo::before{content:'';display:inline-block;width:8px;height:8px;background:var(--green);border-radius:50%;box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
 .topbar .logo span{color:var(--muted);font-weight:400;letter-spacing:2px;font-size:10px}
-.topbar .meta{display:flex;gap:14px;align-items:center;font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+.topbar .meta{display:flex;gap:14px;align-items:center;font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;position:relative}
 .topbar .meta .live{color:var(--green);font-weight:600}
 .topbar .meta .live::before{content:'';display:inline-block;width:5px;height:5px;background:var(--green);border-radius:50%;margin-right:4px;box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
@@ -116,6 +116,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
 .note{font-size:8px;color:var(--muted);letter-spacing:.5px;padding-top:4px;text-transform:uppercase}
 
 /* Weather */
+.weather-dropdown{position:absolute;top:100%;right:0;width:300px;background:var(--panel);border:1px solid var(--border);border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,.6);z-index:1000;display:none;padding:10px}
+.weather-dropdown.open{display:block}
 .weather-main{display:flex;align-items:center;gap:12px;padding:6px 0;border-bottom:1px solid var(--border)}
 .weather-icon{font-size:32px;line-height:1}
 .weather-temp{font-size:24px;font-weight:700;color:var(--hi)}
@@ -175,6 +177,8 @@ footer{padding:6px 16px;font-size:8px;color:var(--muted);letter-spacing:1px;text
 <div class="topbar">
   <div class="logo">MONITOR <span>// ops dashboard</span></div>
   <div class="meta">
+    <span id="topbarWeather" style="cursor:pointer" onclick="toggleWeatherDropdown(event)"></span>
+    <div class="weather-dropdown" id="weatherDropdown"></div>
     <span class="live">LIVE</span>
     <span id="lastUpdated">INIT</span>
     <button class="refresh-btn" onclick="refreshAll()">REFRESH</button>
@@ -248,7 +252,15 @@ footer{padding:6px 16px;font-size:8px;color:var(--muted);letter-spacing:1px;text
     <div class="panel-body" id="anthropicNewsContent"><div class="loading">Fetching</div></div>
   </div>
 
-  <!-- ROW 3: Markets + Microsoft -->
+  <!-- ROW 3: Markets + Microsoft + Cyber -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Cyber</h2>
+      <div class="tabs" id="cyberNewsTabs"></div>
+    </div>
+    <div class="panel-body" id="cyberNewsContent"><div class="loading">Fetching</div></div>
+  </div>
+
   <div class="panel">
     <div class="panel-head">
       <h2>Crypto</h2>
@@ -277,12 +289,12 @@ footer{padding:6px 16px;font-size:8px;color:var(--muted);letter-spacing:1px;text
   <div class="panel">
     <div class="panel-head">
       <h2>Microsoft</h2>
-      <div class="badge muted">HN + BLOG</div>
+      <div class="tabs" id="msNewsTabs"></div>
     </div>
     <div class="panel-body" id="msNewsContent"><div class="loading">Fetching</div></div>
   </div>
 
-  <!-- ROW 4: Stocks | GitHub | Weather -->
+  <!-- ROW 4: Stocks | GitHub -->
   <div class="panel">
     <div class="panel-head">
       <h2>Stocks</h2>
@@ -297,14 +309,6 @@ footer{padding:6px 16px;font-size:8px;color:var(--muted);letter-spacing:1px;text
       <div class="badge muted">REPOS</div>
     </div>
     <div class="panel-body" id="githubContent"><div class="loading">Fetching</div></div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-head">
-      <h2>Weather</h2>
-      <button class="refresh-btn" onclick="showCitySearch()" style="font-size:7px;padding:2px 6px">CHANGE CITY</button>
-    </div>
-    <div class="panel-body" id="weatherContent"><div class="loading">Locating</div></div>
   </div>
 
 </div>
@@ -554,10 +558,21 @@ const fetchCryptoNews=createFeed({contentId:'cryptoNewsContent',tabId:'cryptoNew
   {id:'ct',label:'CTel',type:'rss',url:'https://cointelegraph.com/rss'}
 ]});
 
-const fetchMSNews=createFeed({contentId:'msNewsContent',sources:[
+const fetchMSNews=createFeed({contentId:'msNewsContent',tabId:'msNewsTabs',sources:[
   {id:'all',label:'All'},
   {id:'hn',label:'HN',type:'hn',url:'https://hn.algolia.com/api/v1/search_by_date?query=Microsoft+Azure+Copilot+Windows&tags=story&hitsPerPage=12'},
-  {id:'blog',label:'Blog',type:'rss',url:'https://blogs.microsoft.com/feed/'}
+  {id:'blog',label:'Blog',type:'rss',url:'https://blogs.microsoft.com/feed/'},
+  {id:'devblogs',label:'DevBlogs',type:'rss',url:'https://devblogs.microsoft.com/feed/'},
+  {id:'verge',label:'Verge',type:'rss',url:'https://www.theverge.com/rss/microsoft/index.xml'}
+]});
+
+const fetchCyberNews=createFeed({contentId:'cyberNewsContent',tabId:'cyberNewsTabs',sources:[
+  {id:'all',label:'All'},
+  {id:'hn',label:'HN',type:'hn',url:'https://hn.algolia.com/api/v1/search_by_date?query=cybersecurity+vulnerability+CVE+ransomware&tags=story&hitsPerPage=12'},
+  {id:'krebs',label:'Krebs',type:'rss',url:'https://krebsonsecurity.com/feed/'},
+  {id:'bleeping',label:'Bleeping',type:'rss',url:'https://www.bleepingcomputer.com/feed/'},
+  {id:'hackernews',label:'THN',type:'rss',url:'https://feeds.feedburner.com/TheHackersNews'},
+  {id:'darkreading',label:'DarkRead',type:'rss',url:'https://www.darkreading.com/rss.xml'}
 ]});
 
 const fetchWorldNews=createFeed({contentId:'worldNewsContent',tabId:'worldNewsTabs',sources:[
@@ -705,7 +720,8 @@ async function resolveLocation(){
 }
 
 function showCitySearch(){
-  const el=document.getElementById('weatherContent');
+  const el=document.getElementById('weatherDropdown');
+  el.classList.add('open');
   el.innerHTML=`
     <div class="city-search">
       <input type="text" id="cityInput" placeholder="Search city..." autofocus/>
@@ -714,6 +730,7 @@ function showCitySearch(){
     <ul class="city-results" id="cityResults"></ul>
     <div style="padding-top:4px"><button class="change-btn" onclick="useMyLocation()" style="border:1px solid var(--border);background:none;color:var(--muted);padding:3px 8px;font-family:inherit;font-size:8px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;border-radius:2px">⊕ Use my location</button></div>`;
   document.getElementById('cityInput').addEventListener('keydown',e=>{if(e.key==='Enter')searchCity()});
+  setTimeout(()=>document.getElementById('cityInput').focus(),50);
 }
 
 async function searchCity(){
@@ -745,9 +762,17 @@ function useMyLocation(){
   fetchWeather();
 }
 
+function toggleWeatherDropdown(e){
+  e.stopPropagation();
+  document.getElementById('weatherDropdown').classList.toggle('open');
+}
+document.addEventListener('click',()=>document.getElementById('weatherDropdown').classList.remove('open'));
+document.getElementById('weatherDropdown').addEventListener('click',e=>e.stopPropagation());
+
 async function fetchWeather(){
-  const el=document.getElementById('weatherContent');
-  el.innerHTML='<div class="loading">Fetching weather</div>';
+  const el=document.getElementById('topbarWeather');
+  const dd=document.getElementById('weatherDropdown');
+  el.textContent='⏳';
   try{
     const loc=await resolveLocation();
     const weather=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,uv_index&daily=weather_code,temperature_2m_max,temperature_2m_min&wind_speed_unit=kmh&timezone=auto&forecast_days=6`).then(r=>r.json());
@@ -755,8 +780,8 @@ async function fetchWeather(){
     const code=String(c.weather_code);
     const icon=WMO_ICONS[code]||'🌡';
     const desc=WMO_DESC[code]||'Unknown';
+    el.innerHTML=`${icon} ${c.temperature_2m}°C · ${escHtml(loc.name)}`;
 
-    // 5-day forecast (skip today)
     let fcHtml='<div class="weather-forecast">';
     for(let i=1;i<6&&i<weather.daily.time.length;i++){
       const day=DAYS[new Date(weather.daily.time[i]).getDay()];
@@ -765,7 +790,7 @@ async function fetchWeather(){
     }
     fcHtml+='</div>';
 
-    el.innerHTML=`
+    dd.innerHTML=`
       <div class="weather-main">
         <div class="weather-icon">${icon}</div>
         <div><div class="weather-temp">${c.temperature_2m}°C</div><div class="weather-desc">${desc}</div></div>
@@ -779,8 +804,8 @@ async function fetchWeather(){
       <div class="weather-loc"><span>${escHtml(loc.name)}${loc.country?' · '+loc.country:''}</span><button class="change-btn" onclick="showCitySearch()">CHANGE</button></div>
       ${fcHtml}`;
   }catch(e){
-    el.innerHTML=e.code===1?'<div class="error-msg">Location access denied</div>':'<div class="error-msg">Weather unavailable</div>';
-    el.innerHTML+=`<div style="padding-top:6px"><button class="change-btn" onclick="showCitySearch()" style="border:1px solid var(--border);background:none;color:var(--muted);padding:3px 8px;font-family:inherit;font-size:8px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;border-radius:2px">Search city manually</button></div>`;
+    el.textContent='🌡 --';
+    dd.innerHTML='<div class="error-msg" style="padding:8px;font-size:9px">Weather unavailable</div><div style="padding:4px"><button class="change-btn" onclick="showCitySearch()" style="border:1px solid var(--border);background:none;color:var(--muted);padding:3px 8px;font-family:inherit;font-size:8px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;border-radius:2px">Search city</button></div>';
   }
 }
 
@@ -814,7 +839,7 @@ async function fetchGitHub(){
 // ===== REFRESH =====
 function refreshAll(){
   document.getElementById('lastUpdated').textContent='UPDATING...';
-  Promise.all([fetchCrypto(),fetchETFs(),fetchStocks(),fetchGitHub(),fetchAINews(),fetchTechNews(),fetchAnthropicNews(),fetchCryptoNews(),fetchMSNews(),fetchWorldNews(),fetchWeather()]).then(()=>{
+  Promise.all([fetchCrypto(),fetchETFs(),fetchStocks(),fetchGitHub(),fetchAINews(),fetchTechNews(),fetchAnthropicNews(),fetchCryptoNews(),fetchMSNews(),fetchCyberNews(),fetchWorldNews(),fetchWeather()]).then(()=>{
     document.getElementById('lastUpdated').textContent=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
   });
 }
