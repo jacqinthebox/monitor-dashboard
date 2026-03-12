@@ -47,10 +47,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
 .panel-head h2::before{content:'';display:inline-block;width:3px;height:12px;background:var(--green);border-radius:1px;flex-shrink:0}
 .panel-head .badge{font-size:8px;color:var(--green);letter-spacing:1px;font-weight:600}
 .panel-head .badge.muted{color:var(--muted)}
-.panel-head .tabs{display:flex;gap:2px}
-.panel-head .tab{background:none;border:none;color:var(--muted);padding:3px 8px;font-family:inherit;font-size:8px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;border-radius:2px;transition:all .15s}
-.panel-head .tab:hover{color:var(--text);background:rgba(255,255,255,.04)}
-.panel-head .tab.active{background:var(--hi);color:#000;font-weight:600}
+.tabs{display:flex;gap:2px}
+.tab{background:none;border:none;color:var(--muted);padding:3px 8px;font-family:inherit;font-size:8px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;border-radius:2px;transition:all .15s}
+.tab:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.tab.active{background:var(--hi);color:#000;font-weight:600}
 .panel-body{padding:8px 12px;overflow-y:auto;flex:1;min-height:0}
 
 /* Map panel gets more height */
